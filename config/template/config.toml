@@ -1,0 +1,28 @@
+# QQ Space MCP Server 配置文件
+# 复制此文件为 config/env.toml 并修改配置
+
+[plugin]
+# 是否启用
+enabled = true
+# Napcat HTTP 服务地址（用于获取 Cookie）
+http_host = "127.0.0.1"
+# Napcat HTTP 服务端口
+http_port = 9999
+# Napcat HTTP 服务 Token
+napcat_token = ""
+# Cookie 获取方式（按顺序尝试）：adapter, napcat, qrcode, local
+cookie_methods = ["adapter", "napcat", "qrcode", "local"]
+
+[image]
+# 是否启用 AI 生图功能
+enabled = false
+# AI 生图服务地址（OpenAI 兼容格式）
+base_url = "https://ark.cn-beijing.volces.com/api/v3"
+# AI 生图模型
+model = "doubao-seedream-5-0-260128"
+# AI 生图 API Key
+api_key = "your_api_key"
+# 是否启用参考图
+enable_reference = false
+# 参考图 URL 或本地路径
+reference = ""

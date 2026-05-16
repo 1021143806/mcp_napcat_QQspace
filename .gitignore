@@ -1,0 +1,39 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+dist/
+build/
+*.egg
+
+# Virtual environment
+venv/
+.venv/
+
+# IDE
+.vscode/
+.idea/
+
+# Config
+config/env.toml
+
+# Cookie files
+cookies.json
+qrcode.png
+
+# Processed data
+processed_list.json
+
+# Test
+test/*
+
+# Backup
+backup/
+
+# Dev
+dev/
+
+# OS
+.DS_Store
+Thumbs.db

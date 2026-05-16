@@ -1,0 +1,15 @@
+{
+  "mcpServers": {
+    "qqspace-mcp": {
+      "command": "python",
+      "args": ["/main/app/github/mcphub/MCP/mcp_QQspace/run_direct.py"],
+      "env": {
+        "QZONE_HTTP_HOST": "127.0.0.1",
+        "QZONE_HTTP_PORT": "9999",
+        "QZONE_NAPCAT_TOKEN": "your_token_here",
+        "QZONE_COOKIE_METHODS": "napcat,qrcode,local",
+        "QZONE_IMAGE_ENABLED": "false"
+      }
+    }
+  }
+}
