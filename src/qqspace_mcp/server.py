@@ -80,6 +80,15 @@ class GenerateImageParam(BaseModel):
     model: str | None = Field(default=None, description="AI image model (optional, uses configured model by default)")
     reference: str | None = Field(default=None, description="Reference image URL or local path (optional)")
 
+class GetFeedsSummaryParam(BaseModel):
+    target_qq: str = Field(description="Target QQ number")
+    num: int = Field(default=10, description="Number of feeds to retrieve")
+    filter_commented: bool = Field(default=True, description="Whether to filter out already-commented feeds")
+
+class GetFeedDetailParam(BaseModel):
+    target_qq: str = Field(description="Target QQ number")
+    tid: str = Field(description="Feed dynamic ID")
+
 
 # ============================================================================
 # MCP Server
@@ -135,6 +144,32 @@ async def list_tools() -> list[Tool]:
             name="qzone_renew_cookies",
             description="Refresh QQ Space cookies",
             inputSchema=RenewCookiesParam.model_json_schema(),
+        ),
+        # Lite & summary tools (smaller responses, no image base64)
+        Tool(
+            name="qzone_get_feeds_summary",
+            description="Get a lightweight summary list of feeds (tid, time, preview text, image/video/comment counts). Use this first for browsing; use qzone_get_feed_detail for full content with images.",
+            inputSchema=GetFeedsSummaryParam.model_json_schema(),
+        ),
+        Tool(
+            name="qzone_get_feeds_lite",
+            description="Get feeds with full text and comments but image URLs instead of base64 (much smaller response). Use qzone_get_feed_detail to get actual image data for a specific feed.",
+            inputSchema=GetFeedsParam.model_json_schema(),
+        ),
+        Tool(
+            name="qzone_get_zone_feeds_lite",
+            description="Get zone feeds with full text but image URLs instead of base64 (much smaller response).",
+            inputSchema={"type": "object", "properties": {}, "additionalProperties": False},
+        ),
+        Tool(
+            name="qzone_get_send_history_lite",
+            description="Get send history with image URLs instead of base64 (much smaller response).",
+            inputSchema=GetSendHistoryParam.model_json_schema(),
+        ),
+        Tool(
+            name="qzone_get_feed_detail",
+            description="Get a single feed with full content including base64-encoded images. Use after browsing summaries to get image data for a specific feed.",
+            inputSchema=GetFeedDetailParam.model_json_schema(),
         ),
     ]
 
@@ -263,6 +298,79 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
             if result:
                 return [TextContent(type="text", text="Cookies refreshed successfully")]
             return [TextContent(type="text", text="Cookie refresh failed (may have been refreshed within 1 hour, or all methods failed)")]
+
+        # ---- qzone_get_feeds_summary ----
+        elif name == "qzone_get_feeds_summary":
+            params = GetFeedsSummaryParam(**arguments)
+            await renew_cookies(HTTP_HOST, str(HTTP_PORT), NAPCAT_TOKEN, COOKIE_METHODS)
+            qzone = create_qzone_api()
+            if qzone is None:
+                return [TextContent(type="text", text="Error: Unable to create QzoneAPI instance. Please refresh cookies first.")]
+
+            summary = await qzone.get_feeds_summary(params.target_qq, params.num, params.filter_commented)
+            return [TextContent(type="text", text=json.dumps(summary, ensure_ascii=False, indent=2))]
+
+        # ---- qzone_get_feeds_lite ----
+        elif name == "qzone_get_feeds_lite":
+            params = GetFeedsParam(**arguments)
+            await renew_cookies(HTTP_HOST, str(HTTP_PORT), NAPCAT_TOKEN, COOKIE_METHODS)
+            qzone = create_qzone_api()
+            if qzone is None:
+                return [TextContent(type="text", text="Error: Unable to create QzoneAPI instance. Please refresh cookies first.")]
+
+            feeds_list = await qzone.get_list_lite(params.target_qq, params.num, params.filter_commented)
+            return [TextContent(type="text", text=json.dumps(feeds_list, ensure_ascii=False, indent=2))]
+
+        # ---- qzone_get_zone_feeds_lite ----
+        elif name == "qzone_get_zone_feeds_lite":
+            await renew_cookies(HTTP_HOST, str(HTTP_PORT), NAPCAT_TOKEN, COOKIE_METHODS)
+            qzone = create_qzone_api()
+            if qzone is None:
+                return [TextContent(type="text", text="Error: Unable to create QzoneAPI instance. Please refresh cookies first.")]
+
+            feeds_list = await qzone.get_qzone_list_lite()
+            return [TextContent(type="text", text=json.dumps(feeds_list, ensure_ascii=False, indent=2))]
+
+        # ---- qzone_get_send_history_lite ----
+        elif name == "qzone_get_send_history_lite":
+            params = GetSendHistoryParam(**arguments)
+            await renew_cookies(HTTP_HOST, str(HTTP_PORT), NAPCAT_TOKEN, COOKIE_METHODS)
+            qzone = create_qzone_api()
+            if qzone is None:
+                return [TextContent(type="text", text="Error: Unable to create QzoneAPI instance. Please refresh cookies first.")]
+
+            feeds_list = await qzone.get_list_lite(target_qq=str(qzone.uin), num=params.num)
+            history = "==================="
+            for feed in feeds_list:
+                if not feed.get("rt_con", ""):
+                    history += f"""
+时间：'{feed.get("created_time", "")}'。
+说说内容：'{feed.get("content", "")}'
+图片URL：'{feed.get("images", [])}'
+===================
+"""
+                else:
+                    history += f"""
+时间: '{feed.get("created_time", "")}'。
+转发了一条说说，内容为: '{feed.get("rt_con", "")}'
+图片URL: '{feed.get("images", [])}'
+对该说说的评论为: '{feed.get("content", "")}'
+===================
+"""
+            return [TextContent(type="text", text=history)]
+
+        # ---- qzone_get_feed_detail ----
+        elif name == "qzone_get_feed_detail":
+            params = GetFeedDetailParam(**arguments)
+            await renew_cookies(HTTP_HOST, str(HTTP_PORT), NAPCAT_TOKEN, COOKIE_METHODS)
+            qzone = create_qzone_api()
+            if qzone is None:
+                return [TextContent(type="text", text="Error: Unable to create QzoneAPI instance. Please refresh cookies first.")]
+
+            detail = await qzone.get_feed_detail(params.target_qq, params.tid)
+            if detail is None:
+                return [TextContent(type="text", text=f"Feed not found: tid={params.tid}")]
+            return [TextContent(type="text", text=json.dumps(detail, ensure_ascii=False, indent=2))]
 
         # ---- qzone_generate_image ----
         elif name == "qzone_generate_image":

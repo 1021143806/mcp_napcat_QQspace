@@ -73,24 +73,37 @@ cp config/template/config.toml config/env.toml
 }
 ```
 
-## 可用工具（9 个）
+## 可用工具（14 个）
 
-### QQ 空间操作（8 个）
+### QQ 空间操作（13 个）
 | 工具名 | 描述 |
 |--------|------|
 | `qzone_send_feed` | 发送说说到 QQ 空间 |
-| `qzone_get_feeds` | 获取指定 QQ 号的好友说说列表 |
-| `qzone_get_zone_feeds` | 获取自己空间下好友的最新动态 |
+| `qzone_get_feeds` | 获取指定 QQ 号的好友说说列表（含图片 base64，数据量大） |
+| `qzone_get_feeds_summary` 🆕 | 获取说说摘要列表（tid/时间/内容预览/图片数/评论数，超精简） |
+| `qzone_get_feeds_lite` 🆕 | 获取说说列表（完整文字+评论，图片仅 URL，数据量小） |
+| `qzone_get_zone_feeds` | 获取自己空间下好友的最新动态（含图片 base64） |
+| `qzone_get_zone_feeds_lite` 🆕 | 获取空间动态（完整文字，图片仅 URL，数据量小） |
+| `qzone_get_feed_detail` 🆕 | 获取单条说说的完整数据（含图片 base64），按 tid 查询 |
 | `qzone_like_feed` | 点赞指定说说 |
 | `qzone_comment_feed` | 评论指定说说 |
 | `qzone_reply_comment` | 回复指定评论 |
-| `qzone_get_send_history` | 获取自己发过的说说历史 |
+| `qzone_get_send_history` | 获取自己发过的说说历史（含图片 base64） |
+| `qzone_get_send_history_lite` 🆕 | 获取说说历史（图片仅 URL，数据量小） |
 | `qzone_renew_cookies` | 刷新 QQ 空间 Cookie |
 
 ### AI 生图（1 个，可选）
 | 工具名 | 描述 |
 |--------|------|
 | `qzone_generate_image` | 使用 AI 生成图片 |
+
+### 推荐使用方式
+
+为减少返回数据量，建议按以下分层方式使用：
+
+1. **快速浏览** → 先用 `qzone_get_feeds_summary` 获取摘要列表
+2. **阅读内容** → 用 `qzone_get_feeds_lite` / `qzone_get_zone_feeds_lite` 获取完整文字
+3. **查看图片** → 用 `qzone_get_feed_detail` 按 tid 获取单条含图片的完整数据
 
 ## Cookie 获取方式
 

@@ -545,6 +545,198 @@ class QzoneAPI:
             logger.error(str(json_data))
             return [{"error": f'{e},你没有看到任何东西'}]
 
+    async def get_list_lite(self, target_qq: str, num: int, filter: bool = True) -> list[dict[str, Any]]:
+        """获取指定 QQ 号的好友说说列表（轻量版，图片仅保留 URL，不下载 base64）"""
+        logger.info(f'[LITE] 即将获取 {target_qq} 的说说列表...num={num} filter={filter}')
+        async with httpx.AsyncClient(timeout=10, follow_redirects=True) as client:
+            res = await client.request(
+                method="GET",
+                url=self.LIST_URL,
+                params={
+                    'g_tk': self.gtk2,
+                    "uin": target_qq,
+                    "ftype": 0,
+                    "sort": 0,
+                    "pos": 0,
+                    "num": num,
+                    "replynum": 100,
+                    "callback": "_preloadCallback",
+                    "code_version": 1,
+                    "format": "jsonp",
+                    "need_comment": 1,
+                    "need_private_comment": 1
+                },
+                headers={
+                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) "
+                                  "Chrome/91.0.4472.124 Safari/537.36",
+                    "Referer": f"https://user.qzone.qq.com/{target_qq}",
+                    "Host": "user.qzone.qq.com",
+                    "Connection": "keep-alive"
+                },
+                cookies=self.cookies
+            )
+
+        if res.status_code != 200:
+            logger.error("访问失败: " + str(res.status_code))
+            return []
+
+        data = res.text
+        if data.startswith('_preloadCallback(') and data.endswith(');'):
+            json_str = data[len('_preloadCallback('):-2]
+        else:
+            json_str = data
+
+        try:
+            json_data = json.loads(json_str)
+            uin_nickname = json_data.get('logininfo').get('name')
+            self.qq_nickname = uin_nickname
+
+            if json_data.get('code') != 0:
+                return [{"error": json_data.get('message')}]
+
+            feeds_list = []
+            msglist = json_data.get("msglist") or []
+            if not msglist:
+                logger.warning("msglist 为空或 None，返回空的说说列表")
+            for msg in msglist:
+                is_comment = False
+                if 'commentlist' in msg:
+                    commentlist = msg.get("commentlist")
+                    if isinstance(commentlist, list):
+                        for comment in commentlist:
+                            qq_nickname = comment.get("name")
+                            if uin_nickname == qq_nickname and target_qq != str(self.uin) and filter:
+                                logger.info('已评论过此说说，即将跳过')
+                                is_comment = True
+                                break
+
+                if not is_comment or not filter:
+                    timestamp = msg.get("created_time", "")
+                    if timestamp:
+                        time_tuple = time.localtime(timestamp)
+                        created_time = time.strftime('%Y-%m-%d %H:%M:%S', time_tuple)
+                    else:
+                        created_time = msg.get("createTime", "unknown")
+                    tid = msg.get("tid", "")
+                    content = msg.get("content", "")
+                    logger.info(f"正在阅读说说内容: {content[:20]}...")
+
+                    # 提取图片 URL（不下载 base64）
+                    image_urls = []
+                    for pic in (msg.get("pic") or []):
+                        url = pic.get("url1") or pic.get("pic_id") or pic.get("smallurl")
+                        if url:
+                            image_urls.append(url)
+
+                    # 读取视频封面 URL
+                    for video in (msg.get("video") or []):
+                        video_image_url = video.get("url1") or video.get("pic_url")
+                        if video_image_url:
+                            image_urls.append(video_image_url)
+
+                    # 提取视频播放地址
+                    videos = []
+                    for video in (msg.get("video") or []):
+                        url = video.get("url3")
+                        if url:
+                            videos.append(url)
+
+                    # 提取转发内容
+                    rt_con = ""
+                    rt_data = msg.get("rt_con") or {}
+                    if isinstance(rt_data, dict):
+                        rt_con = rt_data.get("content", "")
+
+                    # 提取评论
+                    def _safe_int(value):
+                        try:
+                            return int(value)
+                        except (TypeError, ValueError):
+                            return None
+
+                    comments = []
+                    for comment in (msg.get("commentlist") or []):
+                        comment_nickname = comment.get("name", "")
+                        comment_content = comment.get("content", "")
+                        comment_uin = comment.get("uin", "")
+                        comment_tid_value = _safe_int(comment.get("tid"))
+                        comment_time = comment.get("createTime", "") or comment.get("createTime2", "")
+
+                        for sub_comment in (comment.get("list_3") or []):
+                            sub_content = sub_comment.get("content", "")
+                            sub_nickname = sub_comment.get("name", "")
+                            sub_uin = sub_comment.get("uin", "")
+                            sub_tid_value = _safe_int(sub_comment.get("tid"))
+                            sub_time = sub_comment.get("createTime", "") or comment.get("createTime2", "")
+                            sub_parent = comment_tid_value
+                            comments.append({
+                                "content": sub_content,
+                                "qq_account": str(sub_uin),
+                                "nickname": sub_nickname,
+                                "comment_tid": sub_tid_value,
+                                "created_time": sub_time,
+                                "parent_tid": sub_parent,
+                            })
+
+                        comments.append({
+                            "content": comment_content,
+                            "qq_account": str(comment_uin),
+                            "nickname": comment_nickname,
+                            "comment_tid": comment_tid_value,
+                            "created_time": comment_time,
+                            "parent_tid": None,
+                        })
+
+                    feeds_list.append({
+                        "target_qq": str(target_qq),
+                        "tid": str(tid),
+                        "created_time": created_time,
+                        "content": content,
+                        "images": image_urls,
+                        "videos": videos,
+                        "rt_con": rt_con,
+                        "comments": comments
+                    })
+            if len(feeds_list) == 0:
+                return [{"error": '你已经看过最近的所有说说了，没有必要再看一遍'}]
+            return feeds_list
+
+        except Exception as e:
+            logger.error(str(json_data))
+            return [{"error": f'{e},你没有看到任何东西'}]
+
+    async def get_feeds_summary(self, target_qq: str, num: int, filter: bool = True) -> list[dict[str, Any]]:
+        """获取说说摘要列表（超精简版，仅含 tid/时间/内容预览/图片数量/评论数）"""
+        feeds = await self.get_list_lite(target_qq, num, filter)
+        if not feeds or (len(feeds) == 1 and "error" in feeds[0]):
+            return feeds
+
+        summaries = []
+        for feed in feeds:
+            content = feed.get("content", "")
+            preview = content[:100] + "..." if len(content) > 100 else content
+            summaries.append({
+                "tid": feed.get("tid", ""),
+                "created_time": feed.get("created_time", ""),
+                "preview": preview,
+                "image_count": len(feed.get("images", [])),
+                "video_count": len(feed.get("videos", [])),
+                "comment_count": len(feed.get("comments", [])),
+                "is_forward": bool(feed.get("rt_con", "")),
+            })
+        return summaries
+
+    async def get_feed_detail(self, target_qq: str, tid: str) -> dict[str, Any] | None:
+        """获取单条说说的完整数据（含图片 base64），通过 tid 定位"""
+        # 获取最近 20 条说说（含图片 base64），从中筛选匹配的 tid
+        feeds = await self.get_list(target_qq, 20, filter=False)
+        if not feeds:
+            return None
+        for feed in feeds:
+            if feed.get("tid") == tid:
+                return feed
+        return None
+
     async def get_qzone_list(self) -> list[dict[str, Any]]:
         """获取自己的 QQ 空间下，好友最新的几条说说"""
         async with httpx.AsyncClient(timeout=10, follow_redirects=True) as client:
@@ -703,6 +895,163 @@ class QzoneAPI:
                 })
 
             logger.info(f"成功解析 {len(feeds_list)} 条最新说说")
+            feeds_list = [item for item in feeds_list if item.get('target_qq') != str(self.uin)]
+            return feeds_list
+        except Exception as e:
+            logger.error(f'解析说说错误：{str(e)}')
+            return []
+
+    async def get_qzone_list_lite(self) -> list[dict[str, Any]]:
+        """获取自己的 QQ 空间下好友最新说说（轻量版，图片仅保留 URL，不下载 base64）"""
+        async with httpx.AsyncClient(timeout=10, follow_redirects=True) as client:
+            res = await client.request(
+                method="GET",
+                url=self.ZONE_LIST_URL,
+                params={
+                    "uin": self.uin,
+                    "scope": 0,
+                    "view": 1,
+                    "filter": "all",
+                    "flag": 1,
+                    "applist": "all",
+                    "pagenum": 1,
+                    "aisortEndTime": 0,
+                    "aisortOffset": 0,
+                    "aisortBeginTime": 0,
+                    "begintime": 0,
+                    "format": "json",
+                    "g_tk": self.gtk2,
+                    "useutf8": 1,
+                    "outputhtmlfeed": 1
+                },
+                headers={
+                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) "
+                                  "Chrome/91.0.4472.124 Safari/537.36",
+                    "Referer": f"https://user.qzone.qq.com/{self.uin}",
+                    "Host": "user.qzone.qq.com",
+                    "Connection": "keep-alive"
+                },
+                cookies=self.cookies
+            )
+
+        if res.status_code != 200:
+            logger.error("访问失败: " + str(res.status_code))
+            return []
+
+        data = res.text
+        if data.startswith('_Callback(') and data.endswith(');'):
+            data = data[len('_Callback('):-2]
+        data = data.replace('undefined', 'null')
+        try:
+            data_dict = json5.loads(data)
+            if isinstance(data_dict, dict):
+                data_json = data_dict.get('data', {}).get('data', [])
+            else:
+                logger.error("无效的 JSON 数据")
+                return []
+        except Exception as e:
+            logger.error(f"解析错误: {e}")
+            return []
+
+        try:
+            feeds_list = []
+            for feed in data_json:
+                if not feed:
+                    continue
+                appid = str(feed.get('appid', ''))
+                if appid != '311':
+                    continue
+                target_qq = feed.get('uin', '')
+                tid = feed.get('key', '')
+                if not target_qq or not tid:
+                    logger.error(f"无效的说说数据: target_qq={target_qq}, tid={tid}")
+                    continue
+
+                html_content = feed.get('html', '')
+                if not html_content:
+                    logger.error(f"说说内容为空: UIN={target_qq}, TID={tid}")
+                    continue
+
+                soup = bs4.BeautifulSoup(html_content, 'html.parser')
+                created_time = feed.get('feedstime', '').strip()
+
+                text_div = soup.find('div', class_='f-info')
+                text = text_div.get_text(strip=True) if text_div else ""
+
+                rt_con = ""
+                txt_box = soup.select_one('div.txt-box')
+                if txt_box:
+                    rt_con = txt_box.get_text(strip=True)
+                    if '：' in rt_con:
+                        rt_con = rt_con.split('：', 1)[1].strip()
+
+                # Extract image URLs only (no base64 download)
+                image_urls = []
+                img_box = soup.find('div', class_='img-box')
+                if img_box:
+                    for img in img_box.find_all('img'):
+                        src = img.get('src')
+                        if src and isinstance(src, str) and not src.startswith('http://qzonestyle.gtimg.cn'):
+                            image_urls.append(src)
+
+                img_tag = soup.select_one('div.video-img img')
+                if img_tag and 'src' in img_tag.attrs:
+                    image_urls.append(img_tag['src'])
+
+                unique_urls = list(set(image_urls))
+
+                videos = []
+                video_div = soup.select_one('div.img-box.f-video-wrap.play')
+                if video_div and 'url3' in video_div.attrs:
+                    videos.append(video_div['url3'])
+
+                comments_list = []
+                comment_items = soup.select('li.comments-item.bor3')
+                if comment_items:
+                    for item in comment_items:
+                        qq_account = item.get('data-uin', '')
+                        comment_tid = item.get('data-tid', '')
+                        nickname = item.get('data-nick', '')
+
+                        content_div = item.select_one('div.comments-content')
+                        if content_div:
+                            for op in content_div.select('div.comments-op'):
+                                op.decompose()
+                            content = content_div.get_text(' ', strip=True)
+                        else:
+                            content = ""
+
+                        comment_time_span = item.select_one('span.state')
+                        comment_time = comment_time_span.get_text(strip=True) if comment_time_span else ""
+
+                        parent_tid = None
+                        parent_div = item.find_parent('div', class_='mod-comments-sub')
+                        if parent_div:
+                            parent_li = parent_div.find_parent('li', class_='comments-item')
+                            if parent_li:
+                                parent_tid = parent_li.get('data-tid')
+
+                        comments_list.append({
+                            'qq_account': str(qq_account),
+                            'nickname': nickname,
+                            'comment_tid': int(comment_tid) if isinstance(comment_tid, str) and comment_tid.isdigit() else 0,
+                            'content': content,
+                            "created_time": comment_time,
+                            'parent_tid': int(parent_tid) if isinstance(parent_tid, str) and parent_tid.isdigit() else None
+                        })
+
+                feeds_list.append({
+                    'target_qq': str(target_qq),
+                    'tid': str(tid),
+                    "created_time": created_time,
+                    'content': text,
+                    'images': unique_urls,
+                    'videos': videos,
+                    'rt_con': rt_con,
+                    'comments': comments_list,
+                })
+
+            logger.info(f"[LITE] 成功解析 {len(feeds_list)} 条最新说说")
             feeds_list = [item for item in feeds_list if item.get('target_qq') != str(self.uin)]
             return feeds_list
         except Exception as e:
