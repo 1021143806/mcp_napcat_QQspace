@@ -1,6 +1,6 @@
 """
 QQ Space MCP Server
-封装 QQ 空间操作的 MCP 服务器（发说说、读说说、点赞、评论、回复、AI 生图）
+MCP server for QQ Space operations (send feeds, read feeds, like, comment, reply, AI image generation)
 """
 
 import asyncio
@@ -30,7 +30,7 @@ from .cookie import renew_cookies
 from .qzone_api import create_qzone_api
 
 # ============================================================================
-# 日志
+# Logging
 # ============================================================================
 
 logging.basicConfig(
@@ -41,109 +41,109 @@ logging.basicConfig(
 logger = logging.getLogger("qqspace_mcp.server")
 
 # ============================================================================
-# 请求参数模型
+# Request parameter models
 # ============================================================================
 
 class SendFeedParam(BaseModel):
-    content: str = Field(description="说说文本内容")
-    images: list[str] | None = Field(default=None, description="图片 base64 列表（可选）")
+    content: str = Field(description="Feed text content")
+    images: list[str] | None = Field(default=None, description="List of base64-encoded images (optional)")
 
 class GetFeedsParam(BaseModel):
-    target_qq: str = Field(description="目标 QQ 号")
-    num: int = Field(default=5, description="获取数量")
-    filter_commented: bool = Field(default=True, description="是否过滤已评论过的说说")
+    target_qq: str = Field(description="Target QQ number")
+    num: int = Field(default=5, description="Number of feeds to retrieve")
+    filter_commented: bool = Field(default=True, description="Whether to filter out already-commented feeds")
 
 class LikeFeedParam(BaseModel):
-    fid: str = Field(description="说说动态 ID")
-    target_qq: str = Field(description="目标 QQ 号")
+    fid: str = Field(description="Feed dynamic ID")
+    target_qq: str = Field(description="Target QQ number")
 
 class CommentFeedParam(BaseModel):
-    fid: str = Field(description="说说动态 ID")
-    target_qq: str = Field(description="目标 QQ 号")
-    content: str = Field(description="评论内容")
+    fid: str = Field(description="Feed dynamic ID")
+    target_qq: str = Field(description="Target QQ number")
+    content: str = Field(description="Comment content")
 
 class ReplyCommentParam(BaseModel):
-    fid: str = Field(description="说说动态 ID")
-    target_qq: str = Field(description="目标 QQ 号")
-    target_nickname: str = Field(description="目标 QQ 昵称")
-    content: str = Field(description="回复内容")
-    comment_tid: str = Field(description="评论 ID")
+    fid: str = Field(description="Feed dynamic ID")
+    target_qq: str = Field(description="Target QQ number")
+    target_nickname: str = Field(description="Target QQ nickname")
+    content: str = Field(description="Reply content")
+    comment_tid: str = Field(description="Comment ID")
 
 class GetSendHistoryParam(BaseModel):
-    num: int = Field(default=10, description="获取数量")
+    num: int = Field(default=10, description="Number of history feeds to retrieve")
 
 class RenewCookiesParam(BaseModel):
-    methods: str | None = Field(default=None, description="Cookie 获取方式（逗号分隔），如 'napcat,qrcode,local'")
+    methods: str | None = Field(default=None, description="Cookie retrieval methods (comma-separated), e.g. 'napcat,qrcode,local'")
 
 class GenerateImageParam(BaseModel):
-    prompt: str = Field(description="图片生成提示词")
-    model: str | None = Field(default=None, description="AI 生图模型（可选，默认使用配置中的模型）")
-    reference: str | None = Field(default=None, description="参考图 URL 或本地路径（可选）")
+    prompt: str = Field(description="Image generation prompt")
+    model: str | None = Field(default=None, description="AI image model (optional, uses configured model by default)")
+    reference: str | None = Field(default=None, description="Reference image URL or local path (optional)")
 
 
 # ============================================================================
-# MCP 服务器
+# MCP Server
 # ============================================================================
 
 app = Server("qqspace-mcp")
 
 
 # ============================================================================
-# 工具定义
+# Tool definitions
 # ============================================================================
 
 @app.list_tools()
 async def list_tools() -> list[Tool]:
     tools = [
-        # QQ 空间操作
+        # QQ Space operations
         Tool(
             name="qzone_send_feed",
-            description="发送说说到 QQ 空间（支持文本和图片）",
+            description="Send a feed (post) to QQ Space with optional text and images",
             inputSchema=SendFeedParam.model_json_schema(),
         ),
         Tool(
             name="qzone_get_feeds",
-            description="获取指定 QQ 号的好友说说列表",
+            description="Get the feed list of a specified QQ user",
             inputSchema=GetFeedsParam.model_json_schema(),
         ),
         Tool(
             name="qzone_get_zone_feeds",
-            description="获取自己 QQ 空间下好友的最新动态",
+            description="Get the latest feeds from friends in your own QQ Space",
             inputSchema={"type": "object", "properties": {}, "additionalProperties": False},
         ),
         Tool(
             name="qzone_like_feed",
-            description="点赞指定说说",
+            description="Like a specified feed",
             inputSchema=LikeFeedParam.model_json_schema(),
         ),
         Tool(
             name="qzone_comment_feed",
-            description="评论指定说说",
+            description="Comment on a specified feed",
             inputSchema=CommentFeedParam.model_json_schema(),
         ),
         Tool(
             name="qzone_reply_comment",
-            description="回复指定评论",
+            description="Reply to a specified comment on a feed",
             inputSchema=ReplyCommentParam.model_json_schema(),
         ),
         Tool(
             name="qzone_get_send_history",
-            description="获取自己发过的说说历史",
+            description="Get the history of feeds you have posted",
             inputSchema=GetSendHistoryParam.model_json_schema(),
         ),
         Tool(
             name="qzone_renew_cookies",
-            description="刷新 QQ 空间 Cookie",
+            description="Refresh QQ Space cookies",
             inputSchema=RenewCookiesParam.model_json_schema(),
         ),
     ]
 
-    # AI 生图（可选）
+    # AI image generation (optional)
     if IMAGE_ENABLED:
         tools.append(
             Tool(
                 name="qzone_generate_image",
-                description="使用 AI 生成图片（OpenAI 兼容格式）",
+                description="Generate an image using AI (OpenAI-compatible format)",
                 inputSchema=GenerateImageParam.model_json_schema(),
             )
         )
@@ -152,7 +152,7 @@ async def list_tools() -> list[Tool]:
 
 
 # ============================================================================
-# 工具实现
+# Tool implementations
 # ============================================================================
 
 @app.call_tool()
@@ -164,9 +164,9 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
             await renew_cookies(HTTP_HOST, str(HTTP_PORT), NAPCAT_TOKEN, COOKIE_METHODS)
             qzone = create_qzone_api()
             if qzone is None:
-                return [TextContent(type="text", text="错误: 无法创建 QzoneAPI 实例，请先刷新 Cookie")]
+                return [TextContent(type="text", text="Error: Unable to create QzoneAPI instance. Please refresh cookies first.")]
 
-            # 处理图片
+            # Process images
             images_bytes = []
             if params.images:
                 import base64
@@ -174,12 +174,12 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
                     try:
                         images_bytes.append(base64.b64decode(img_str))
                     except Exception as e:
-                        return [TextContent(type="text", text=f"错误: 图片 base64 解码失败: {e}")]
+                        return [TextContent(type="text", text=f"Error: Failed to decode base64 image: {e}")]
 
             fid = await qzone.publish_emotion(content=params.content, images=images_bytes if images_bytes else None)
             if fid is None:
-                return [TextContent(type="text", text="发送说说失败")]
-            return [TextContent(type="text", text=f"说说发送成功，动态ID：{fid}")]
+                return [TextContent(type="text", text="Failed to send feed")]
+            return [TextContent(type="text", text=f"Feed sent successfully. Feed ID: {fid}")]
 
         # ---- qzone_get_feeds ----
         elif name == "qzone_get_feeds":
@@ -187,7 +187,7 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
             await renew_cookies(HTTP_HOST, str(HTTP_PORT), NAPCAT_TOKEN, COOKIE_METHODS)
             qzone = create_qzone_api()
             if qzone is None:
-                return [TextContent(type="text", text="错误: 无法创建 QzoneAPI 实例，请先刷新 Cookie")]
+                return [TextContent(type="text", text="Error: Unable to create QzoneAPI instance. Please refresh cookies first.")]
 
             feeds_list = await qzone.get_list(params.target_qq, params.num, params.filter_commented)
             return [TextContent(type="text", text=json.dumps(feeds_list, ensure_ascii=False, indent=2))]
@@ -197,7 +197,7 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
             await renew_cookies(HTTP_HOST, str(HTTP_PORT), NAPCAT_TOKEN, COOKIE_METHODS)
             qzone = create_qzone_api()
             if qzone is None:
-                return [TextContent(type="text", text="错误: 无法创建 QzoneAPI 实例，请先刷新 Cookie")]
+                return [TextContent(type="text", text="Error: Unable to create QzoneAPI instance. Please refresh cookies first.")]
 
             feeds_list = await qzone.get_qzone_list()
             return [TextContent(type="text", text=json.dumps(feeds_list, ensure_ascii=False, indent=2))]
@@ -208,12 +208,12 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
             await renew_cookies(HTTP_HOST, str(HTTP_PORT), NAPCAT_TOKEN, COOKIE_METHODS)
             qzone = create_qzone_api()
             if qzone is None:
-                return [TextContent(type="text", text="错误: 无法创建 QzoneAPI 实例，请先刷新 Cookie")]
+                return [TextContent(type="text", text="Error: Unable to create QzoneAPI instance. Please refresh cookies first.")]
 
             result = await qzone.like(params.fid, params.target_qq)
             if result:
-                return [TextContent(type="text", text="点赞成功")]
-            return [TextContent(type="text", text="点赞失败")]
+                return [TextContent(type="text", text="Like successful")]
+            return [TextContent(type="text", text="Like failed")]
 
         # ---- qzone_comment_feed ----
         elif name == "qzone_comment_feed":
@@ -221,12 +221,12 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
             await renew_cookies(HTTP_HOST, str(HTTP_PORT), NAPCAT_TOKEN, COOKIE_METHODS)
             qzone = create_qzone_api()
             if qzone is None:
-                return [TextContent(type="text", text="错误: 无法创建 QzoneAPI 实例，请先刷新 Cookie")]
+                return [TextContent(type="text", text="Error: Unable to create QzoneAPI instance. Please refresh cookies first.")]
 
             result = await qzone.comment(params.fid, params.target_qq, params.content)
             if result:
-                return [TextContent(type="text", text="评论成功")]
-            return [TextContent(type="text", text="评论失败")]
+                return [TextContent(type="text", text="Comment successful")]
+            return [TextContent(type="text", text="Comment failed")]
 
         # ---- qzone_reply_comment ----
         elif name == "qzone_reply_comment":
@@ -234,12 +234,12 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
             await renew_cookies(HTTP_HOST, str(HTTP_PORT), NAPCAT_TOKEN, COOKIE_METHODS)
             qzone = create_qzone_api()
             if qzone is None:
-                return [TextContent(type="text", text="错误: 无法创建 QzoneAPI 实例，请先刷新 Cookie")]
+                return [TextContent(type="text", text="Error: Unable to create QzoneAPI instance. Please refresh cookies first.")]
 
             result = await qzone.reply(params.fid, params.target_qq, params.target_nickname, params.content, params.comment_tid)
             if result:
-                return [TextContent(type="text", text="回复成功")]
-            return [TextContent(type="text", text="回复失败")]
+                return [TextContent(type="text", text="Reply successful")]
+            return [TextContent(type="text", text="Reply failed")]
 
         # ---- qzone_get_send_history ----
         elif name == "qzone_get_send_history":
@@ -247,7 +247,7 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
             await renew_cookies(HTTP_HOST, str(HTTP_PORT), NAPCAT_TOKEN, COOKIE_METHODS)
             qzone = create_qzone_api()
             if qzone is None:
-                return [TextContent(type="text", text="错误: 无法创建 QzoneAPI 实例，请先刷新 Cookie")]
+                return [TextContent(type="text", text="Error: Unable to create QzoneAPI instance. Please refresh cookies first.")]
 
             history = await qzone.get_send_history(params.num)
             return [TextContent(type="text", text=history)]
@@ -261,13 +261,13 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
 
             result = await renew_cookies(HTTP_HOST, str(HTTP_PORT), NAPCAT_TOKEN, methods or COOKIE_METHODS)
             if result:
-                return [TextContent(type="text", text="Cookie 刷新成功")]
-            return [TextContent(type="text", text="Cookie 刷新失败（可能在1小时内已刷新过，或所有方法均失败）")]
+                return [TextContent(type="text", text="Cookies refreshed successfully")]
+            return [TextContent(type="text", text="Cookie refresh failed (may have been refreshed within 1 hour, or all methods failed)")]
 
         # ---- qzone_generate_image ----
         elif name == "qzone_generate_image":
             if not IMAGE_ENABLED:
-                return [TextContent(type="text", text="AI 生图功能未启用，请在配置中设置 IMAGE_ENABLED=true")]
+                return [TextContent(type="text", text="AI image generation is not enabled. Set IMAGE_ENABLED=true in config.")]
 
             params = GenerateImageParam(**arguments)
             try:
@@ -297,40 +297,40 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
                         body["extra_body"] = {"image": f"data:image/{fmt};base64,{encoded}"}
 
                 client = OpenAI(base_url=IMAGE_BASE_URL, api_key=IMAGE_API_KEY)
-                logger.info(f"正在使用模型 {model} 生成图片: {params.prompt}")
+                logger.info(f"Generating image with model {model}: {params.prompt}")
                 response = client.images.generate(**body)
 
                 if response is None or not response.data:
-                    return [TextContent(type="text", text="图片生成失败，未收到有效响应")]
+                    return [TextContent(type="text", text="Image generation failed: no valid response received")]
 
                 img = response.data[0]
                 if img.url:
-                    logger.info("下载图片中...")
+                    logger.info("Downloading image...")
                     r = req.get(img.url, timeout=30)
                     r.raise_for_status()
                     img_base64 = b64.b64encode(r.content).decode('utf-8')
-                    return [TextContent(type="text", text=f"图片生成成功 (base64):\n{img_base64}")]
+                    return [TextContent(type="text", text=f"Image generated successfully (base64):\n{img_base64}")]
                 elif img.b64_json:
-                    return [TextContent(type="text", text=f"图片生成成功 (base64):\n{img.b64_json}")]
+                    return [TextContent(type="text", text=f"Image generated successfully (base64):\n{img.b64_json}")]
                 else:
-                    return [TextContent(type="text", text="图片数据为空")]
+                    return [TextContent(type="text", text="Image data is empty")]
 
             except ImportError:
-                return [TextContent(type="text", text="AI 生图功能需要安装 openai 和 requests 依赖。请运行: pip install openai requests")]
+                return [TextContent(type="text", text="AI image generation requires openai and requests packages. Run: pip install openai requests")]
             except Exception as e:
-                return [TextContent(type="text", text=f"图片生成失败: {str(e)}")]
+                return [TextContent(type="text", text=f"Image generation failed: {str(e)}")]
 
         else:
-            return [TextContent(type="text", text=f"未知工具: {name}")]
+            return [TextContent(type="text", text=f"Unknown tool: {name}")]
 
     except Exception as e:
-        error_msg = f"工具调用失败 [{name}]: {str(e)}"
+        error_msg = f"Tool call failed [{name}]: {str(e)}"
         logger.error(error_msg)
         return [TextContent(type="text", text=error_msg)]
 
 
 async def main():
-    """启动 MCP 服务器"""
+    """Start MCP server"""
     from mcp.server.stdio import stdio_server
 
     print("=" * 60)
