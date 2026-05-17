@@ -29,6 +29,28 @@ from .config import (
 from .cookie import renew_cookies
 from .qzone_api import create_qzone_api
 
+
+def clean_schema(schema: dict) -> dict:
+    """Remove non-compliant fields from JSON Schema for Anthropic API compatibility.
+    Claude API requires strict JSON Schema draft 2020-12 compliance and rejects
+    $schema, title, and default fields that Pydantic model_json_schema() generates.
+    """
+    if not isinstance(schema, dict):
+        return schema
+    cleaned = {}
+    for key, value in schema.items():
+        if key in ("$schema", "title", "default"):
+            continue
+        if key == "properties" and isinstance(value, dict):
+            cleaned[key] = {k: clean_schema(v) for k, v in value.items()}
+        elif key == "items" and isinstance(value, dict):
+            cleaned[key] = clean_schema(value)
+        elif key == "additionalProperties" and isinstance(value, dict):
+            cleaned[key] = clean_schema(value)
+        else:
+            cleaned[key] = value
+    return cleaned
+
 # ============================================================================
 # Logging
 # ============================================================================
@@ -108,68 +130,68 @@ async def list_tools() -> list[Tool]:
         Tool(
             name="qzone_send_feed",
             description="Send a feed (post) to QQ Space with optional text and images",
-            inputSchema=SendFeedParam.model_json_schema(),
+            inputSchema=clean_schema(SendFeedParam.model_json_schema()),
         ),
         Tool(
             name="qzone_get_feeds",
             description="Get the feed list of a specified QQ user",
-            inputSchema=GetFeedsParam.model_json_schema(),
+            inputSchema=clean_schema(GetFeedsParam.model_json_schema()),
         ),
         Tool(
             name="qzone_get_zone_feeds",
             description="Get the latest feeds from friends in your own QQ Space",
-            inputSchema={"type": "object", "properties": {}, "additionalProperties": False},
+            inputSchema={"type": "object", "properties": {}},
         ),
         Tool(
             name="qzone_like_feed",
             description="Like a specified feed",
-            inputSchema=LikeFeedParam.model_json_schema(),
+            inputSchema=clean_schema(LikeFeedParam.model_json_schema()),
         ),
         Tool(
             name="qzone_comment_feed",
             description="Comment on a specified feed",
-            inputSchema=CommentFeedParam.model_json_schema(),
+            inputSchema=clean_schema(CommentFeedParam.model_json_schema()),
         ),
         Tool(
             name="qzone_reply_comment",
             description="Reply to a specified comment on a feed",
-            inputSchema=ReplyCommentParam.model_json_schema(),
+            inputSchema=clean_schema(ReplyCommentParam.model_json_schema()),
         ),
         Tool(
             name="qzone_get_send_history",
             description="Get the history of feeds you have posted",
-            inputSchema=GetSendHistoryParam.model_json_schema(),
+            inputSchema=clean_schema(GetSendHistoryParam.model_json_schema()),
         ),
         Tool(
             name="qzone_renew_cookies",
             description="Refresh QQ Space cookies",
-            inputSchema=RenewCookiesParam.model_json_schema(),
+            inputSchema=clean_schema(RenewCookiesParam.model_json_schema()),
         ),
         # Lite & summary tools (smaller responses, no image base64)
         Tool(
             name="qzone_get_feeds_summary",
             description="Get a lightweight summary list of feeds (tid, time, preview text, image/video/comment counts). Use this first for browsing; use qzone_get_feed_detail for full content with images.",
-            inputSchema=GetFeedsSummaryParam.model_json_schema(),
+            inputSchema=clean_schema(GetFeedsSummaryParam.model_json_schema()),
         ),
         Tool(
             name="qzone_get_feeds_lite",
             description="Get feeds with full text and comments but image URLs instead of base64 (much smaller response). Use qzone_get_feed_detail to get actual image data for a specific feed.",
-            inputSchema=GetFeedsParam.model_json_schema(),
+            inputSchema=clean_schema(GetFeedsParam.model_json_schema()),
         ),
         Tool(
             name="qzone_get_zone_feeds_lite",
             description="Get zone feeds with full text but image URLs instead of base64 (much smaller response).",
-            inputSchema={"type": "object", "properties": {}, "additionalProperties": False},
+            inputSchema={"type": "object", "properties": {}},
         ),
         Tool(
             name="qzone_get_send_history_lite",
             description="Get send history with image URLs instead of base64 (much smaller response).",
-            inputSchema=GetSendHistoryParam.model_json_schema(),
+            inputSchema=clean_schema(GetSendHistoryParam.model_json_schema()),
         ),
         Tool(
             name="qzone_get_feed_detail",
             description="Get a single feed with full content including base64-encoded images. Use after browsing summaries to get image data for a specific feed.",
-            inputSchema=GetFeedDetailParam.model_json_schema(),
+            inputSchema=clean_schema(GetFeedDetailParam.model_json_schema()),
         ),
     ]
 
@@ -179,7 +201,7 @@ async def list_tools() -> list[Tool]:
             Tool(
                 name="qzone_generate_image",
                 description="Generate an image using AI (OpenAI-compatible format)",
-                inputSchema=GenerateImageParam.model_json_schema(),
+                inputSchema=clean_schema(GenerateImageParam.model_json_schema()),
             )
         )
 
