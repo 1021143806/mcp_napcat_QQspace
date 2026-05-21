@@ -34,6 +34,7 @@ def clean_schema(schema: dict) -> dict:
     """Remove non-compliant fields from JSON Schema for Anthropic API compatibility.
     Claude API requires strict JSON Schema draft 2020-12 compliance and rejects
     $schema, title, and default fields that Pydantic model_json_schema() generates.
+    Also normalizes 'required' from object to list if needed.
     """
     if not isinstance(schema, dict):
         return schema
@@ -47,6 +48,10 @@ def clean_schema(schema: dict) -> dict:
             cleaned[key] = clean_schema(value)
         elif key == "additionalProperties" and isinstance(value, dict):
             cleaned[key] = clean_schema(value)
+        elif key == "required" and isinstance(value, dict) and not isinstance(value, list):
+            # Normalize required from object (e.g. {"0": "target_qq"}) to list (["target_qq"])
+            # This can happen when some MCP servers serialize arrays as objects
+            cleaned[key] = list(value.values())
         else:
             cleaned[key] = value
     return cleaned
